@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Запись на занятие</title>
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { font-family: 'Google Sans', sans-serif; }
+    .calendar-container { display: flex; align-items: center; justify-content: center; position: relative; padding: 10px; } /* Уменьшили вертикальные отступы */
+    .calendar { display: flex; gap: 8px; align-items: center; overflow-x: hidden; position: relative; scroll-behavior: smooth; transition: transform 0.5s ease-in-out; } /* Добавлена плавная анимация */
+    .month-label { text-align: left; font-size: 20px; font-weight: bold; margin-bottom: 5px; margin-left: 50px; width: calc(100% - 100px); max-width: calc(8 * 50px + 7 * 8px); margin-left: auto; margin-right: auto; } /* Исправлено выравнивание названия месяца по блоку времени и уменьшены вертикальные отступы */
+    .day { display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f5f5f5; border-radius: 12px; position: relative; cursor: pointer; width: 48px; height: 60px; border: 1px solid #ddd; text-align: center; } /* Общий фон для кнопок даты и времени */
+    .day .weekday { font-size: 14px; margin-bottom: 3px; }
+    .day .day-number { font-size: 16px; font-weight: bold; }
+    .day.weekend { color: #cf0a2c; }
+    .day.selected { background-color: #007BFF; color: white; }
+    .navigation-buttons { display: flex; gap: 20px; align-items: center; position: relative; margin-left: 20px; }
+    .navigation-button { cursor: pointer; font-size: 2em; padding: 5px; border: none; background: none; color: black; } /* Уменьшены отступы для кнопок навигации */
+    .navigation-button.disabled { color: gray; cursor: default; }
+    .horizontal-line { width: calc(8 * 50px + 7 * 8px); height: 1px; background-color: #ddd; margin: 10px auto 5px; } /* Уменьшены вертикальные отступы */
+    .time-slots { display: flex; flex-direction: column; align-items: flex-start; padding: 10px; gap: 5px; margin-top: 10px; width: calc(100% - 100px); max-width: calc(8 * 50px + 7 * 8px); margin-left: auto; margin-right: auto; } /* Уменьшены вертикальные отступы и отступы между подразделами */
+    .time-slot-category { margin-bottom: 5px; } /* Уменьшили промежутки между разделами */
+    .time-slot-category h3 { margin-bottom: 5px; font-size: 20px; font-weight: bold; }
+    .time-slot-buttons { display: flex; flex-wrap: wrap; gap: 8px; max-width: 460px; } /* Уменьшили расстояние между кнопками времени, чтобы влезало 5 в строку */
+    .time-slot { display: flex; align-items: center; justify-content: center; width: 83px; height: 48px; text-align: center; border: 1px solid #ddd; border-radius: 10px; cursor: pointer; background-color: #f5f5f5; font-size: 16px; } /* Общий фон для кнопок времени */
+    .time-slot.selected { background-color: #007BFF; color: white; }
+    .today-button { cursor: pointer; font-size: 1em; padding: 5px; border: 1px solid #ddd; border-radius: 12px; background-color: #f5f5f5; margin-right: 15px; transition: background-color 0.3s ease; } /* Уменьшены отступы для кнопки "Сегодня" */
+    .today-button.active { background-color: #d3d3d3; } /* Добавлен стиль для активной кнопки "Сегодня" */
+    h1 { text-align: center; } /* Центровка заголовка "Онлайн Расписание" */
+  </style>
+</head>
+<body>
+  <div id="app">
+    <h1>Выберите дату и время</h1>
+    <div class="month-label" id="month-label">Месяц</div>
+    <div class="calendar-container">
+      <div class="today-button" id="today-button">Сегодня</div>
+      <div class="calendar" id="calendar"></div>
+      <div class="navigation-buttons">
+        <div class="navigation-button" id="prev-date">&#8249;</div>
+        <div class="navigation-button" id="next-date">&#8250;</div>
+      </div>
+    </div>
+    <div class="horizontal-line"></div> <!-- Добавлена горизонтальная черта под блоком с датами -->
+    <div class="time-slots" id="time-slots">
+      <div class="time-slot-category" id="morning">
+        <h3>Утро</h3>
+        <div class="time-slot-buttons" id="morning-slots"></div>
+      </div>
+      <div class="time-slot-category" id="day">
+        <h3>День</h3>
+        <div class="time-slot-buttons" id="day-slots"></div>
+      </div>
+      <div class="time-slot-category" id="evening">
+        <h3>Вечер</h3>
+        <div class="time-slot-buttons" id="evening-slots"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const calendarEl = document.getElementById('calendar');
+    const timeSlotsEl = document.getElementById('time-slots');
+    const monthLabelEl = document.getElementById('month-label');
+    const prevDateBtn = document.getElementById('prev-date');
+    const nextDateBtn = document.getElementById('next-date');
+    const todayButton = document.getElementById('today-button');
+
+    let now = new Date();
+    let currentStartDate = new Date();
+    const daysToShow = 8; // Показывать ближайшие 8 дней
+    const maxMonthsAhead = 3; // Диапазон до 3 месяцев вперёд
+    const timeSlots = {
+      'morning': ['06:00', '06:30', '07:00', '07:30', '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30'],
+      'day': ['12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30'],
+      'evening': ['18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00', '21:30', '22:00', '22:30']
+    };
+    let scheduleData = {}; // Занятые слоты
+
+    function updateMonthLabel() {
+      const endDate = new Date(currentStartDate);
+      endDate.setDate(currentStartDate.getDate() + daysToShow - 1);
+
+      const startMonth = currentStartDate.toLocaleDateString('ru-RU', { month: 'long' });
+      const endMonth = endDate.toLocaleDateString('ru-RU', { month: 'long' });
+
+      if (startMonth === endMonth) {
+        monthLabelEl.textContent = startMonth;
+      } else {
+        monthLabelEl.textContent = `${startMonth} - ${endMonth}`;
+      }
+    }
+
+    function createCalendar() {
+      calendarEl.innerHTML = '';
+      for (let i = 0; i < daysToShow; i++) {
+        const day = new Date(currentStartDate);
+        day.setDate(currentStartDate.getDate() + i);
+        const dayEl = document.createElement('div');
+        dayEl.className = 'day';
+        
+        const weekday = day.toLocaleDateString('ru-RU', { weekday: 'short' });
+        const dayNumber = day.getDate();
+        
+        dayEl.innerHTML = `<div class="weekday">${weekday}</div><div class="day-number">${dayNumber}</div>`;
+        dayEl.dataset.date = day.toISOString().split('T')[0];
+
+        // Выделение выходных (сб, вс)
+        if (weekday === 'сб' || weekday === 'вс') {
+          dayEl.classList.add('weekend');
+        }
+
+        dayEl.addEventListener('click', () => selectDate(dayEl.dataset.date));
+        calendarEl.appendChild(dayEl);
+      }
+      updateMonthLabel();
+      updateNavigationButtons();
+    }
+
+    function selectDate(date) {
+      document.querySelectorAll('.day').forEach(el => el.classList.remove('selected'));
+      const selectedDayEl = document.querySelector(`[data-date='${date}']`);
+      if (selectedDayEl) {
+        selectedDayEl.classList.add('selected');
+      }
+      if (date === now.toISOString().split('T')[0]) {
+        todayButton.classList.add('active');
+      } else {
+        todayButton.classList.remove('active');
+      }
+      displayTimeSlots(date);
+    }
+
+    function displayTimeSlots(date) {
+      document.getElementById('morning-slots').innerHTML = '';
+      document.getElementById('day-slots').innerHTML = '';
+      document.getElementById('evening-slots').innerHTML = '';
+      
+      for (const [key, slots] of Object.entries(timeSlots)) {
+        slots.forEach(slot => {
+          const slotEl = document.createElement('div');
+          slotEl.className = 'time-slot';
+          slotEl.textContent = slot;
+          if (scheduleData[date] && scheduleData[date].includes(slot)) {
+            slotEl.classList.add('disabled');
+          }
+          slotEl.addEventListener('click', () => toggleTimeSlotSelection(slotEl));
+          document.getElementById(`${key}-slots`).appendChild(slotEl);
+        });
+      }
+    }
+
+    function toggleTimeSlotSelection(slotEl) {
+      if (slotEl.classList.contains('selected')) {
+        slotEl.classList.remove('selected');
+      } else {
+        slotEl.classList.add('selected');
+      }
+    }
+
+    function changeDateRange(direction) {
+      const newStartDate = new Date(currentStartDate);
+      newStartDate.setDate(currentStartDate.getDate() + direction * daysToShow);
+      const maxEndDate = new Date(now);
+      maxEndDate.setMonth(maxEndDate.getMonth() + maxMonthsAhead);
+      
+      if (newStartDate >= now && newStartDate <= maxEndDate) {
+        currentStartDate = newStartDate;
+        createCalendar();
+        if (direction > 0) {
+          calendarEl.scrollBy({ left: 600, behavior: 'smooth' }); // Плавная прокрутка вправо
+        } else {
+          calendarEl.scrollBy({ left: -600, behavior: 'smooth' }); // Плавная прокрутка влево
+        }
+      }
+    }
+
+    function updateNavigationButtons() {
+      const newStartDate = new Date(currentStartDate);
+      newStartDate.setDate(currentStartDate.getDate() - daysToShow);
+      prevDateBtn.classList.toggle('disabled', newStartDate < now);
+      
+      const maxEndDate = new Date(now);
+      maxEndDate.setMonth(maxEndDate.getMonth() + maxMonthsAhead);
+      const nextStartDate = new Date(currentStartDate);
+      nextStartDate.setDate(currentStartDate.getDate() + daysToShow);
+      nextDateBtn.classList.toggle('disabled', nextStartDate > maxEndDate);
+    }
+
+    todayButton.addEventListener('click', () => {
+      currentStartDate = new Date(now);
+      createCalendar();
+      selectDate(currentStartDate.toISOString().split('T')[0]);
+    });
+
+    prevDateBtn.addEventListener('click', () => {
+      if (!prevDateBtn.classList.contains('disabled')) {
+        changeDateRange(-1);
+      }
+    });
+    nextDateBtn.addEventListener('click', () => {
+      if (!nextDateBtn.classList.contains('disabled')) {
+        changeDateRange(1);
+      }
+    });
+
+    createCalendar(); // Создаем календарь при загрузке страницы
+    selectDate(currentStartDate.toISOString().split('T')[0]); // Автоматически выбираем текущую дату при загрузке страницы
+  </script>
+</body>
+</html>
